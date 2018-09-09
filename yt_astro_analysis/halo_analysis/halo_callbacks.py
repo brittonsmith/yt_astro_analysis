@@ -17,11 +17,16 @@ from yt.utilities.on_demand_imports import _h5py as h5py
 import numpy as np
 import os
 
+from yt.convenience import \
+    load as yt_load
 from yt.data_objects.profiles import \
     create_profile
 from yt.frontends.ytdata.utilities import \
     _hdf5_yt_array, \
-    _yt_array_hdf5
+    _yt_array_hdf5, \
+    save_as_dataset
+from yt.funcs import \
+    issue_deprecation_warning
 from yt.units.yt_array import \
     YTArray
 from yt.utilities.exceptions import \
@@ -263,6 +268,10 @@ def save_profiles(halo, storage="profiles", filename=None,
     r"""
     Save profile data to disk.
 
+    This callback has been deprecated in favor of the save_object_as_datset
+    callback. Please, use as:
+    >>> hc.add_callback("save_object_as_dataset", "profiles")
+
     Parameters
     ----------
     halo : Halo object
@@ -281,6 +290,11 @@ def save_profiles(halo, storage="profiles", filename=None,
         Default : "."
     
     """
+
+    issue_deprecation_warning("""
+This callback has been deprecated in favor of the save_object_as_datset
+callback. Please, use as:
+>>> hc.add_callback("save_object_as_dataset", "profiles")""")
 
     if not hasattr(halo, storage):
         return
@@ -319,6 +333,10 @@ def load_profiles(halo, storage="profiles", fields=None,
     r"""
     Load profile data from disk.
 
+    This callback has been deprecated in favor of the save_object_as_datset
+    callback. Please, use as:
+    >>> hc.add_callback("load_object_as_dataset", "profiles")
+
     Parameters
     ----------
     halo : Halo object
@@ -340,6 +358,11 @@ def load_profiles(halo, storage="profiles", fields=None,
         Default : "."
     
     """
+
+    issue_deprecation_warning("""
+This callback has been deprecated in favor of the load_object_as_datset
+callback. Please, use as:
+>>> hc.add_callback("load_object_as_dataset", "profiles")""")
 
     if filename is None:
         filename = storage
@@ -380,6 +403,84 @@ def load_profiles(halo, storage="profiles", fields=None,
     fh.close()
 
 add_callback("load_profiles", load_profiles)
+
+@parallel_root_only
+def save_object_as_dataset(halo, object_name, filename=None,
+                           output_dir=".", **kwargs):
+    r"""
+    Save an object associated with the halo as a reloadable datset.
+
+    Parameters
+    ----------
+    halo : Halo object
+        The Halo object to be provided by the HaloCatalog.
+    object_name : string
+        Name of the object to store. The object should be either a
+        dict of yt arrays or a yt data object with a save_as_dataset
+        method.
+    filename : string
+        The name of the file to be written.  The final filename will be 
+        "<filename>_<id>.h5".  If None, filename is set to the value given 
+        by the object_name argument.
+        Default: None
+    output_dir : string
+        Name of directory where profile data will be written.  The full path will be
+        the output_dir of the halo catalog concatenated with this directory.
+        Default : "."
+    kwargs : additional keyword arguments
+        Additional keywords to be passed to the save_as_dataset function.
+    """
+
+    my_object = getattr(halo, object_name)
+    if my_object is None:
+        return
+
+    if filename is None:
+        filename = object_name
+    output_filename = os.path.join(
+        halo.halo_catalog.output_dir, output_dir,
+        "%s_%06d.h5" % (filename, halo.quantities["particle_identifier"]))
+
+    if hasattr(my_object, "save_as_datatset"):
+        my_object.save_as_dataset(filename=output_filename, **kwargs)
+    else:
+        save_as_dataset(halo.halo_catalog.data_ds,
+                        output_filename, my_object, **kwargs)
+
+add_callback("save_object_as_dataset", save_object_as_dataset)
+
+def load_object_as_dataset(halo, object_name, filename=None,
+                           output_dir="."):
+    r"""
+    Use yt.load to load a saved dataset and attach it to the halo.
+
+    Parameters
+    ----------
+    halo : Halo object
+        The Halo object to be provided by the HaloCatalog.
+    object_name : string
+        Name of the attribute for storing the loaded dataset.
+    filename : string
+        The name of the file to be loaded.  The final filename will be 
+        "<filename>_<id>.h5".  If None, filename is set to the value given 
+        by the object_name argument.
+        Default: None
+    output_dir : string
+        Name of directory where profile data will be loaded.  The full path will be
+        the output_dir of the halo catalog concatenated with this directory.
+        Default : "."
+    """
+
+    if filename is None:
+        filename = object_name
+    input_filename = os.path.join(
+        halo.halo_catalog.output_dir, output_dir,
+        "%s_%06d.h5" % (filename, halo.quantities["particle_identifier"]))
+
+    ds = yt_load(input_filename)
+    setattr(halo, object_name, ds)
+
+add_callback("load_object_as_dataset", load_object_as_dataset)
 
 def virial_quantities(halo, fields, 
                       overdensity_field=("gas", "overdensity"),
