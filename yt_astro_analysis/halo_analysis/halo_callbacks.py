@@ -260,6 +260,9 @@ def profile(halo, bin_fields, profile_fields, n_bins=32, extrema=None, logs=None
             setattr(halo, variance_storage, halo_variance_store)
         halo_variance_store.update(variance_store)
 
+    profile_object_store = "%s_object" % storage
+    setattr(halo, profile_object_store, my_profile)
+
 add_callback("profile", profile)
 
 @parallel_root_only
@@ -441,7 +444,7 @@ def save_object_as_dataset(halo, object_name, filename=None,
         halo.halo_catalog.output_dir, output_dir,
         "%s_%06d.h5" % (filename, halo.quantities["particle_identifier"]))
 
-    if hasattr(my_object, "save_as_datatset"):
+    if hasattr(my_object, "save_as_dataset"):
         my_object.save_as_dataset(filename=output_filename, **kwargs)
     else:
         save_as_dataset(halo.halo_catalog.data_ds,
