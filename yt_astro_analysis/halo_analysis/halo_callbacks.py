@@ -208,7 +208,7 @@ def profile(halo, bin_fields, profile_fields, n_bins=32, extrema=None, logs=None
 
     """
 
-    mylog.info("Calculating 1D profile for halo %d." % 
+    mylog.info("Calculating profile for halo %d." %
                halo.quantities["particle_identifier"])
 
     dds = halo.halo_catalog.data_ds
