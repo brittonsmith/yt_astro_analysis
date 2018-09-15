@@ -63,6 +63,10 @@ class HaloCallback(object):
         self.function(halo, *self.args, **self.kwargs)
         return True
 
+def _debug(halo):
+    import pdb ; pdb.set_trace()
+add_callback("debug", _debug)
+
 def halo_sphere(halo, radius_field="virial_radius", factor=1.0, 
                 field_parameters=None):
     r"""
