@@ -158,8 +158,8 @@ def sphere_bulk_velocity(halo):
 
 add_callback("sphere_bulk_velocity", sphere_bulk_velocity)
 
-def profile(halo, bin_fields, profile_fields, n_bins=32, extrema=None, logs=None, units=None,
-            weight_field="cell_mass", accumulation=False, fractional=False,
+def profile(halo, bin_fields, profile_fields, n_bins=None, extrema=None, logs=None, units=None,
+            weight_field="cell_mass", accumulation=False, fractional=False, bin_density=None,
             storage="profiles", output_dir="."):
     r"""
     Create 1, 2, or 3D profiles of a halo.
@@ -228,6 +228,60 @@ def profile(halo, bin_fields, profile_fields, n_bins=32, extrema=None, logs=None
                    halo.quantities["particle_identifier"])
         return
 
+    if isinstance(bin_fields[0], str):
+        bin_fields = [bin_fields]
+
+    if bin_density is None:
+        if n_bins is None:
+            n_bins = dict((bin_field, 32) for bin_field in bin_fields)
+    else:
+        if n_bins is None:
+            n_bins = {}
+        elif not isinstance(n_bins, dict):
+            raise RuntimeError("Can only specify n_bins or bin_density, but not both.")
+
+        if extrema is None:
+            extrema = {}
+        if len(extrema) != len(bin_fields):
+            exs = halo.data_object.quantities.extrema(bin_fields)
+            if isinstance(exs, YTArray):
+                exs = [exs]
+
+        for bin_field, ex in zip(bin_fields, exs):
+            if bin_field in n_bins:
+                continue
+            if units is not None and bin_field in units:
+                ex.convert_to_units(units[bin_field])
+            if logs is None:
+                my_log = True
+            else:
+                my_log = logs.get(bin_field, True)
+
+            if extrema.get(bin_field, None) is None:
+                if my_log:
+                    if ex[0] <= 0:
+                        fd = halo.data_object[bin_field]
+                        if units is not None and bin_field in units:
+                            fd.convert_to_units(units[bin_field])
+                        ex[0] = fd[fd > 0].min()
+                        del fd
+                    mi = 10**np.floor(np.log10(ex[0]))
+                    ma = 10**np.ceil(np.log10(ex[1]))
+                else:
+                    mi = np.floor(ex[0])
+                    ma = np.ceil(ex[1])
+                extrema[bin_field] = (mi, ma)
+
+            my_ex = extrema[bin_field]
+            if my_log:
+                my_n_bins = int(np.log10(my_ex[1] / my_ex[0]) * bin_density)
+            else:
+                my_n_bins = int((my_ex[1] - my_ex[0]) * bin_density)
+            n_bins[bin_field] = my_n_bins
+
+    if isinstance(n_bins, dict):
+        n_bins = tuple([n_bins[bin_field] for bin_field in bin_fields])
+
     if output_dir is None:
         output_dir = storage
     output_dir = os.path.join(halo.halo_catalog.output_dir, output_dir)
@@ -236,7 +290,7 @@ def profile(halo, bin_fields, profile_fields, n_bins=32, extrema=None, logs=None
     my_profile = create_profile(halo.data_object, bin_fields, profile_fields, n_bins=n_bins,
                                 extrema=extrema, logs=logs, units=units, weight_field=weight_field,
                                 accumulation=accumulation, fractional=fractional)
-                  
+
     prof_store = dict([(field, my_profile[field]) \
                        for field in my_profile.field_data])
     prof_store[my_profile.x_field] = my_profile.x
