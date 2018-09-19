@@ -85,15 +85,16 @@ def calculate_virial_quantities(hc, fields,
     """
 
     storage = "virial_quantities_profiles"
-    pfields = [field for field in fields if field != "radius"]
+    pfields = [field for field in fields
+               if field != "radius" or field[1] != "radius"]
 
     hc.add_callback("sphere", factor=factor)
     if pfields:
-        hc.add_callback("profile", ["radius"], pfields,
+        hc.add_callback("profile", [("index", "radius")], pfields,
                         weight_field=weight_field,
                         accumulation=accumulation,
                         storage=storage)
-    hc.add_callback("profile", ["radius"], [overdensity_field],
+    hc.add_callback("profile", [("index", "radius")], [overdensity_field],
                     weight_field="cell_volume", accumulation=True,
                     storage=storage)
     hc.add_callback("virial_quantities", fields,
