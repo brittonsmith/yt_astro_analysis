@@ -425,13 +425,15 @@ class HaloCatalog(ParallelAnalysisInterface):
         if self.finder_method_name in ["hop", "fof"]:
             my_index = halo_index
             nhalos = self.comm.mpi_allreduce(halo_index.size, op="sum")
+            pbar = get_pbar("Creating catalog", nhalos, parallel=True)
         else:
-            my_index = parallel_objects(halo_index, njobs=njobs, dynamic=dynamic)
             nhalos = halo_index.size
+            pbar = get_pbar("Creating catalog", nhalos, parallel=True)
+            my_index = parallel_objects(halo_index, njobs=njobs,
+                                        dynamic=dynamic, pbar=pbar)
 
         my_i = 0
         my_n = self.comm.size
-        pbar = get_pbar("Creating catalog", nhalos, parallel=True)
         for i in my_index:
             my_i += min(my_n, nhalos - my_i)
             new_halo = Halo(self)
