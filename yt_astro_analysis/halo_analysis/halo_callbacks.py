@@ -753,19 +753,17 @@ def iterative_center_of_mass(halo, radius_field="virial_radius",
     
 add_callback("iterative_center_of_mass", iterative_center_of_mass)
 
-def periodic_distance(coord1, coord2):
+def periodic_distance(x1, x2, domain=None):
     """
-    periodic_distance(coord1, coord2)
-
     Calculate length of shortest vector between to points in periodic domain.
     """
-    dif = coord1 - coord2
 
-    dim = np.ones(coord1.shape,dtype=int)
-    def periodic_bind(num):
-        pos = np.abs(num % dim)
-        neg = np.abs(num % -dim)
-        return np.min([pos,neg],axis=0)
+    if domain is None:
+        domain = np.ones(x1.shape)
 
-    dif = periodic_bind(dif)
+    dif = x1 - x2
+    pos = np.abs(dif % domain)
+    neg = np.abs(dif % -domain)
+    np.min([pos, neg], axis=0, out=dif)
+
     return np.sqrt((dif * dif).sum(axis=-1))
