@@ -368,7 +368,7 @@ callback. Please, use as:
     mylog.info("Saving halo %d profile data to %s." %
                (halo.quantities["particle_identifier"], output_file))
 
-    fh = h5py.File(output_file, "w")
+    fh = h5py.File(output_file, mode="w")
     my_profile = getattr(halo, storage)
     profile_group = fh.create_group("profiles")
     for field in my_profile:
@@ -435,7 +435,7 @@ callback. Please, use as:
     mylog.info("Loading halo %d profile data from %s." %
                (halo.quantities["particle_identifier"], output_file))
 
-    fh = h5py.File(output_file, "r")
+    fh = h5py.File(output_file, mode="r")
     if fields is None:
         profile_fields = fh["profiles"].keys()
     else:
