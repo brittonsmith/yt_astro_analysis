@@ -85,11 +85,11 @@ def _rockstar_method(hc, **finder_kwargs):
     Run the Rockstar halo finding method.
     """
 
-    from yt_astro_analysis.halo_analysis.halo_finding.rockstar.api import \
+    from yt_astro_analysis.halo_analysis.halo_finding.rockstar.rockstar import \
      RockstarHaloFinder
 
     if 'outbase' not in finder_kwargs:
-        finder_kwargs['outbase'] = hc.output_dir
+        finder_kwargs['outbase'] = hc.output_basedir
 
     ds = hc.data_ds
     rh = RockstarHaloFinder(ds, **finder_kwargs)
