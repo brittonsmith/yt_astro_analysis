@@ -1,5 +1,5 @@
 """
-Operations to get Rockstar loaded up
+Operations to run Rockstar
 
 
 
@@ -23,10 +23,10 @@ from yt.utilities.parallel_tools.parallel_analysis_interface import \
     ProcessorPool
 
 try:
-    from yt_astro_analysis.halo_finding.rockstar import \
+    from yt_astro_analysis.halo_analysis.halo_finding.rockstar import \
      rockstar_interface
 except ImportError:
-    mylog.warn(
+    mylog.warning(
         ("Cannot import the rockstar interface.  Rockstar will not run.\n" +
          "If you need Rockstar, see the installation instructions at " +
          "http://yt-astro-analysis.readthedocs.io/."))
@@ -386,8 +386,8 @@ class RockstarHaloFinder(ParallelAnalysisInterface):
             # output files because it will be easy to lose this connection.
             fp = open(os.path.join(self.outbase, 'datasets.txt'), 'w')
             fp.write("# dsname\tindex\n")
-            for i, ds in enumerate(self.ts):
-                dsloc = os.path.join(os.path.relpath(ds.fullpath), ds.basename)
+            for i, ds in enumerate(self.ts.outputs):
+                dsloc = os.path.join(os.path.relpath(ds))
                 line = "%s\t%d\n" % (dsloc, i)
                 fp.write(line)
             fp.close()

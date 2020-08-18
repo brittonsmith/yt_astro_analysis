@@ -1,18 +1,19 @@
 """
-HaloCatalog object
+AnalysisPipeline class and member functions
 
 
 
 """
 
 #-----------------------------------------------------------------------------
-# Copyright (c) 2013-2017, yt Development Team.
+# Copyright (c) yt Development Team. All rights reserved.
 #
 # Distributed under the terms of the Modified BSD License.
 #
 # The full license is in the file COPYING.txt, distributed with this software.
 #-----------------------------------------------------------------------------
 
+import functools
 import numpy as np
 import os
 
@@ -20,31 +21,43 @@ from yt.frontends.ytdata.utilities import \
     save_as_dataset
 from yt.funcs import \
     ensure_dir, \
-    get_pbar, \
     mylog
+from yt.units.yt_array import \
+    YTArray
 from yt.utilities.parallel_tools.parallel_analysis_interface import \
     ParallelAnalysisInterface, \
     parallel_blocking_call, \
     parallel_objects
 
-from yt_astro_analysis.halo_analysis.halo_object import \
-    Halo
-from yt_astro_analysis.halo_analysis.halo_callbacks import \
+from yt_astro_analysis.halo_analysis.halo_catalog.halo_callbacks import \
     callback_registry
-from yt_astro_analysis.halo_analysis.halo_filters import \
+from yt_astro_analysis.halo_analysis.halo_catalog.halo_filters import \
     filter_registry
-from yt_astro_analysis.halo_analysis.halo_finding_methods import \
-    finding_method_registry
-from yt_astro_analysis.halo_analysis.halo_quantities import \
+from yt_astro_analysis.halo_analysis.halo_catalog.halo_quantities import \
     quantity_registry
-from yt_astro_analysis.halo_analysis.halo_recipes import \
+from yt_astro_analysis.halo_analysis.halo_catalog.halo_recipes import \
     recipe_registry
+from yt_astro_analysis.utilities.logging import \
+    quiet
 
-class HaloCatalog(ParallelAnalysisInterface):
-    r"""Create a HaloCatalog: an object that allows for the creation and association
+class AnalysisTarget(object):
+    _container_name = "pipeline"
+    def __init__(self, pipeline):
+        setattr(self, self._container_name, pipeline)
+        self.quantities = {}
+
+    def _set_field_value(self, fieldkey, fieldname, data_source, index):
+        self.quantities[fieldkey] = \
+          self._get_field_value(fieldname, data_source, index)
+
+    def _get_field_value(self, fieldname, data_source, index):
+        pass
+
+class AnalysisPipeline(ParallelAnalysisInterface):
+    r"""Create a AnalysisPipeline: an object that allows for the creation and association
     of data with a set of halo objects.
 
-    A HaloCatalog object pairs a simulation dataset and the output from a halo finder,
+    A AnalysisPipeline object pairs a simulation dataset and the output from a halo finder,
     allowing the user to perform analysis on each of the halos found by the halo finder.
     Analysis is performed by providing callbacks: functions that accept a Halo object
     and perform independent analysis, return a quantity to be associated with the halo,
@@ -60,12 +73,14 @@ class HaloCatalog(ParallelAnalysisInterface):
     data_ds : str
         Dataset created by a simulation.
     data_source : data container
-        Data container associated with either the halos_ds or the data_ds.
+        Data container associated with either the halos_ds to use for analysis.
+        This can be used to restrict analysis to a subset of the full catalog.
+        By default, the entire catalog will be analyzed.
     finder_method : str
         Halo finder to be used if no halos_ds is given.
     output_dir : str
         The top level directory into which analysis output will be written.
-        Default: "."
+        Default: "halo_catalogs"
     finder_kwargs : dict
         Arguments to pass to the halo finder if finder_method is given.
 
@@ -78,7 +93,7 @@ class HaloCatalog(ParallelAnalysisInterface):
     >>> data_ds = yt.load("DD0064/DD0064")
     >>> halos_ds = yt.load("rockstar_halos/halos_64.0.bin",
     ...                    output_dir="halo_catalogs/catalog_0064")
-    >>> hc = HaloCatalog(data_ds=data_ds, halos_ds=halos_ds)
+    >>> hc = AnalysisPipeline(data_ds=data_ds, halos_ds=halos_ds)
     >>> # filter out halos with mass < 1e13 Msun
     >>> hc.add_filter("quantity_value", "particle_mass", ">", 1e13, "Msun")
     >>> # create a sphere object with radius of 2 times the virial_radius field
@@ -93,7 +108,7 @@ class HaloCatalog(ParallelAnalysisInterface):
 
     >>> # load in the saved halo catalog and all the profile data
     >>> halos_ds = yt.load("halo_catalogs/catalog_0064/catalog_0064.0.h5")
-    >>> hc = HaloCatalog(halos_ds=halos_ds,
+    >>> hc = AnalysisPipeline(halos_ds=halos_ds,
                          output_dir="halo_catalogs/catalog_0064")
     >>> hc.add_callback("load_profiles", output_dir="profiles")
     >>> hc.load()
@@ -104,47 +119,51 @@ class HaloCatalog(ParallelAnalysisInterface):
 
     """
 
-    def __init__(self, halos_ds=None, data_ds=None,
-                 data_source=None, finder_method=None,
-                 finder_kwargs=None,
-                 output_dir="halo_catalogs/catalog"):
+    _target_cls = AnalysisTarget
+    _target_id_field = 'particle_identifier'
+
+    def __init__(self, output_dir="analysis", data_source=None):
         ParallelAnalysisInterface.__init__(self)
-        self.halos_ds = halos_ds
-        self.data_ds = data_ds
-        self.output_dir = ensure_dir(output_dir)
-        if os.path.basename(self.output_dir) != ".":
-            self.output_prefix = os.path.basename(self.output_dir)
-        else:
-            self.output_prefix = "catalog"
 
-        if halos_ds is None:
-            if data_ds is None:
-                raise RuntimeError("Must specify a halos_ds, data_ds, or both.")
-            if finder_method is None:
-                raise RuntimeError("Must specify a halos_ds or a finder_method.")
-
-        if data_source is None:
-            if halos_ds is not None:
-                halos_ds.index
-                data_source = halos_ds.all_data()
-            else:
-                data_source = data_ds.all_data()
+        self.output_basedir = ensure_dir(output_dir)
         self.data_source = data_source
 
-        self.finder_method_name = finder_method
-        if finder_kwargs is None:
-            finder_kwargs = {}
-        if finder_method is not None:
-            finder_method = finding_method_registry.find(finder_method,
-                        **finder_kwargs)
-        self.finder_method = finder_method
-
-        # all of the analysis actions to be performed: callbacks, filters, and quantities
+        # all of the analysis actions to be performed:
+        # callbacks, filters, and quantities
         self.actions = []
         # fields to be written to the halo catalog
         self.quantities = []
-        if self.halos_ds is not None:
-            self.add_default_quantities()
+        self.field_quantities = []
+
+        self._add_default_quantities()
+
+    def _add_default_quantities(self):
+        pass
+
+    _source_ds = None
+    @property
+    def source_ds(self):
+        if self._source_ds is not None:
+            return self._source_ds
+        return getattr(self.data_source, 'ds', {})
+
+    @property
+    def output_basename(self):
+        ds = self.source_ds
+        if isinstance(ds, dict):
+            basename = ds.get('basename')
+        else:
+            basename = getattr(ds, 'basename')
+
+        if basename is None:
+            basename = 'analysis'
+        if '.' in basename:
+            basename = basename[:basename.find('.')]
+        return basename
+
+    @property
+    def output_dir(self):
+        return os.path.join(self.output_basedir, self.output_basename)
 
     def add_callback(self, callback, *args, **kwargs):
         r"""
@@ -168,13 +187,11 @@ class HaloCatalog(ParallelAnalysisInterface):
         ...     print "Halo %d: here is a message - %s." % (my_id, message)
         >>> add_callback("hello_world", _say_something)
 
-        >>> # Now this callback is accessible to the HaloCatalog object
+        >>> # Now this callback is accessible to the AnalysisPipeline object
         >>> hc.add_callback("hello_world", "this is my message")
 
         """
         callback = callback_registry.find(callback, *args, **kwargs)
-        if "output_dir" in kwargs is not None:
-            ensure_dir(os.path.join(self.output_dir, kwargs["output_dir"]))
         self.actions.append(("callback", callback))
 
     def add_quantity(self, key, *args, **kwargs):
@@ -212,22 +229,21 @@ class HaloCatalog(ParallelAnalysisInterface):
         >>> hc.add_quantity("mass_squared")
 
         """
-        if "field_type" in kwargs:
-            field_type = kwargs.pop("field_type")
-        else:
-            field_type = None
-        prepend = kwargs.pop("prepend",False)
-        if field_type is None:
+
+        from_data_source = kwargs.pop("from_data_source", False)
+        field_type = kwargs.pop("field_type", None)
+
+        if not from_data_source:
             quantity = quantity_registry.find(key, *args, **kwargs)
-        elif (field_type, key) in self.halos_ds.field_info:
-            quantity = (field_type, key)
         else:
-            raise RuntimeError("HaloCatalog quantity must be a registered function or a field of a known type.")
+            if field_type is None:
+                quantity = key
+            else:
+                quantity = (field_type, key)
+            self.field_quantities.append(quantity)
+
         self.quantities.append(key)
-        if prepend:
-            self.actions.insert(0, ("quantity", (key, quantity)))
-        else:
-            self.actions.append(("quantity", (key, quantity)))
+        self.actions.append(("quantity", (key, quantity)))
 
     def add_filter(self, halo_filter, *args, **kwargs):
         r"""
@@ -282,11 +298,11 @@ class HaloCatalog(ParallelAnalysisInterface):
         --------
 
         >>> import yt
-        >>> from yt.extensions.astro_analysis.halo_analysis.api import HaloCatalog
+        >>> from yt.extensions.astro_analysis.halo_analysis.api import AnalysisPipeline
         >>>
         >>> data_ds = yt.load('Enzo_64/RD0006/RedshiftOutput0006')
         >>> halos_ds = yt.load('rockstar_halos/halos_0.0.bin')
-        >>> hc = HaloCatalog(data_ds=data_ds, halos_ds=halos_ds)
+        >>> hc = AnalysisPipeline(data_ds=data_ds, halos_ds=halos_ds)
         >>>
         >>> # Filter out less massive halos
         >>> hc.add_filter("quantity_value", "particle_mass", ">", 1e14, "Msun")
@@ -301,7 +317,21 @@ class HaloCatalog(ParallelAnalysisInterface):
         halo_recipe = recipe_registry.find(recipe, *args, **kwargs)
         halo_recipe(self)
 
-    def create(self, save_halos=False, save_catalog=True, njobs=-1, dynamic=False):
+    def _preprocess(self):
+        "Create callback output directories."
+
+        for action_type, action in self.actions:
+            if action_type != 'callback':
+                continue
+            my_output_dir = action.kwargs.get('output_dir')
+            if my_output_dir is not None:
+                new_output_dir = ensure_dir(
+                    os.path.join(self.output_dir, my_output_dir))
+                action.kwargs['output_dir'] = new_output_dir
+
+
+    def create(self, save_objects=False, save_output=True,
+               njobs='auto', dynamic=False):
         r"""
         Create the halo catalog given the callbacks, quantities, and filters that
         have been provided.
@@ -312,12 +342,12 @@ class HaloCatalog(ParallelAnalysisInterface):
 
         Parameters
         ----------
-        save_halos : bool
+        save_objects : bool
             If True, a list of all Halo objects is retained under the "halo_list"
             attribute.  If False, only the compiles quantities are saved under the
             "catalog" attribute.
             Default: False
-        save_catalog : bool
+        save_output : bool
             If True, save the final catalog to disk.
             Default: True
         njobs : int
@@ -334,9 +364,10 @@ class HaloCatalog(ParallelAnalysisInterface):
         load
 
         """
-        self._run(save_halos, save_catalog, njobs=njobs, dynamic=dynamic)
+        self._run(save_objects, save_output,
+                  njobs=njobs, dynamic=dynamic)
 
-    def load(self, save_halos=True, save_catalog=False, njobs=-1, dynamic=False):
+    def load(self, njobs='auto', dynamic=False):
         r"""
         Load a previously created halo catalog.
 
@@ -347,14 +378,6 @@ class HaloCatalog(ParallelAnalysisInterface):
 
         Parameters
         ----------
-        save_halos : bool
-            If True, a list of all Halo objects is retained under the "halo_list"
-            attribute.  If False, only the compiles quantities are saved under the
-            "catalog" attribute.
-            Default: True
-        save_catalog : bool
-            If True, save the final catalog to disk.
-            Default: False
         njobs : int
             The number of jobs over which to divide halo analysis.  Choose -1
             to allocate one processor per halo.
@@ -369,20 +392,21 @@ class HaloCatalog(ParallelAnalysisInterface):
         create
 
         """
-        self._run(save_halos, save_catalog, njobs=njobs, dynamic=dynamic)
+        self._run(True, False, njobs=njobs, dynamic=dynamic)
 
     @parallel_blocking_call
-    def _run(self, save_halos, save_catalog, njobs=-1, dynamic=False):
+    def _run(self, save_objects, save_output,
+             njobs='auto', dynamic=False):
         r"""
         Run the requested halo analysis.
 
         Parameters
         ----------
-        save_halos : bool
+        save_objects : bool
             If True, a list of all Halo objects is retained under the "halo_list"
             attribute.  If False, only the compiles quantities are saved under the
             "catalog" attribute.
-        save_catalog : bool
+        save_output : bool
             If True, save the final catalog to disk.
         njobs : int
             The number of jobs over which to divide halo analysis.  Choose -1
@@ -398,124 +422,130 @@ class HaloCatalog(ParallelAnalysisInterface):
         create, load
 
         """
+
+        self._preprocess()
+
         self.catalog = []
-        if save_halos: self.halo_list = []
+        if save_objects:
+            self.target_list = []
 
-        if self.halos_ds is None:
-            # Find the halos and make a dataset of them
-            self.halos_ds = self.finder_method(self.data_ds)
-            if self.halos_ds is None:
-                mylog.warning('No halos were found for {0}'.format(\
-                        self.data_ds.basename))
-                if save_catalog:
-                    self.halos_ds = self.data_ds
-                    self.save_catalog()
-                    self.halos_ds = None
-                return
-            self.halos_ds.index
+        for my_index, chunk in self._yield_targets(
+                njobs=njobs, dynamic=dynamic):
+            self._process_target(
+                my_index, my_index,
+                save_objects, data_source=chunk)
 
-            # Assign ds and data sources appropriately
-            self.data_source = self.halos_ds.all_data()
+        if save_output:
+            self._save()
 
-            # Add all of the default quantities that all halos must have
-            self.add_default_quantities('all')
+    def _yield_targets(self, njobs='auto', dynamic=False):
 
-        halo_index = np.argsort(self.data_source["all", "particle_identifier"])
-        # If we have just run hop or fof, halos are already divided amongst processors.
-        if self.finder_method_name in ["hop", "fof"]:
-            my_index = halo_index
-            nhalos = self.comm.mpi_allreduce(halo_index.size, op="sum")
-            pbar = get_pbar("Creating catalog", nhalos, parallel=True)
+        my_size = self.comm.size
+
+        if njobs == 'auto':
+            # use task queue if odd number of cores more than 2
+            my_dynamic = my_size > 2 and my_size % 2
+            my_njobs = -1
         else:
-            nhalos = halo_index.size
-            pbar = get_pbar("Creating catalog", nhalos, parallel=True)
-            my_index = parallel_objects(halo_index, njobs=njobs,
-                                        dynamic=dynamic, pbar=pbar)
+            my_dynamic = dynamic
+            my_njobs = njobs
 
-        my_i = 0
-        my_n = self.comm.size
-        for i in my_index:
-            my_i += min(my_n, nhalos - my_i)
-            new_halo = Halo(self)
-            halo_filter = True
-            for action_type, action in self.actions:
-                if action_type == "callback":
-                    action(new_halo)
-                elif action_type == "filter":
-                    halo_filter = action(new_halo)
-                    if not halo_filter:
-                        break
-                elif action_type == "quantity":
-                    key, quantity = action
-                    if quantity in self.halos_ds.field_info:
-                        new_halo.quantities[key] = \
-                          self.data_source[quantity][int(i)]
-                    elif callable(quantity):
-                        new_halo.quantities[key] = quantity(new_halo)
+        for chunk in self.data_source.chunks([], 'io'):
+
+            if self.comm.rank == 0:
+                chunk.get_data(self.field_quantities)
+
+            if my_size > 1:
+                fdata = self.comm.comm.bcast(chunk.field_data, root=0)
+                chunk.field_data.update(fdata)
+
+            target_indices = \
+              range(chunk[self.halo_field_type, self._target_id_field].size)
+            my_indices = parallel_objects(
+                target_indices, njobs=my_njobs, dynamic=my_dynamic)
+
+            for my_index in my_indices:
+                yield my_index, chunk
+
+    def _process_target(self, target, index, save_objects,
+                        data_source=None):
+
+        new_target = self._target_cls(self)
+        new_target.index = index
+        new_target.object = target
+        target_filter = True
+        for action_type, action in self.actions:
+            if action_type == "callback":
+                action(new_target)
+            elif action_type == "filter":
+                target_filter = action(new_target)
+                if not target_filter:
+                    break
+            elif action_type == "quantity":
+                key, quantity = action
+                if callable(quantity):
+                    new_target.quantities[key] = quantity(new_target)
                 else:
-                    raise RuntimeError(
-                        "Action must be a callback, filter, or quantity.")
-
-            if halo_filter:
-                for quantity in new_halo.quantities.values():
-                    if hasattr(quantity, "units"):
-                        quantity.convert_to_base()
-                self.catalog.append(new_halo.quantities)
-
-            if save_halos and halo_filter:
-                self.halo_list.append(new_halo)
+                    new_target._set_field_value(
+                        key, quantity, data_source, index)
             else:
-                del new_halo
+                raise RuntimeError(
+                    "Action must be a callback, filter, or quantity.")
 
-            pbar.update(my_i)
+        if target_filter:
+            for quantity in new_target.quantities.values():
+                if hasattr(quantity, "units"):
+                    quantity.convert_to_base()
+            self.catalog.append(new_target.quantities)
 
-        pbar.finish()
-        self.catalog.sort(key=lambda a:a['particle_identifier'].to_ndarray())
-        if save_catalog:
-            self.save_catalog()
+        if save_objects and target_filter:
+            self.target_list.append(new_target)
+        else:
+            del new_target
 
-    def save_catalog(self):
-        "Write out hdf5 file with all halo quantities."
+    def _save(self, ds=None, data=None, extra_attrs=None, ftypes=None):
+        "Save pipeline results."
 
-        filename = os.path.join(self.output_dir, "%s.%d.h5" %
-                                (self.output_prefix, self.comm.rank))
-        n_halos = len(self.catalog)
-        mylog.info("Saving halo catalog (%d halos) to %s." %
-                   (n_halos, os.path.join(self.output_dir,
-                                         self.output_prefix)))
-        extra_attrs = {"data_type": "halo_catalog",
-                       "num_halos": n_halos}
-        data = {}
-        ftypes = {}
-        if n_halos > 0:
-            for key in self.quantities:
-                # This sets each field to be saved in the root hdf5 group,
-                # as per the HaloCatalog format.
-                ftypes[key] = "."
-                data[key] = self.halos_ds.arr(
-                    [halo[key] for halo in self.catalog])
+        if ds is None:
+            ds = self.source_ds
+        else:
+            self._source_ds = ds
 
-            particles = getattr(self.halos_ds, 'particles', None)
-            if particles is not None:
-                for key in ['particle_number',
-                            'particle_index_start']:
-                    ftypes[key] = "."
-                    data[key] = particles.pop(key)
+        data_dir = ensure_dir(self.output_dir)
+        filename = os.path.join(
+            data_dir, "%s.%d.h5" % (self.output_basename, self.comm.rank))
 
-                for pfield in particles:
-                    data[pfield] = particles[pfield]
-                    ftypes[pfield] = 'particles'
+        if data is None:
+            n_halos = len(self.catalog)
+            data = {}
+            if n_halos > 0:
+                for key in self.quantities:
 
-        save_as_dataset(self.halos_ds, filename, data,
-                        field_types=ftypes, extra_attrs=extra_attrs)
+                    if hasattr(self.catalog[0][key], 'units'):
+                        registry = self.catalog[0][key].units.registry
+                        my_arr = functools.partial(YTArray, registry=registry)
+                    else:
+                        my_arr = np.array
 
-    def add_default_quantities(self, field_type='halos'):
-        for field in ["particle_identifier", "particle_mass",
-                      "particle_position_x", "particle_position_y",
-                      "particle_position_z", "virial_radius"]:
-            field_name = (field_type, field)
-            if field_name not in self.halos_ds.derived_field_list:
-                mylog.warn("Halo dataset %s has no field %s." %
-                           (self.halos_ds, str(field_name)))
-                continue
-            self.add_quantity(field, field_type=field_type, prepend=True)
+                    data[key] = my_arr([halo[key] for halo in self.catalog])
+        else:
+            n_halos = data[self._target_id_field].size
+
+        mylog.info("Saving analysis (%d targets): %s." %
+                   (n_halos, filename))
+
+        if ftypes is None:
+            ftypes = dict((key, ".") for key in self.quantities)
+
+        if extra_attrs is None:
+            extra_attrs = {}
+        extra_attrs_d = {"data_type": "halo_catalog",
+                         "num_halos": n_halos}
+        extra_attrs_d.update(extra_attrs)
+
+        with quiet():
+            save_as_dataset(
+                ds, filename, data,
+                field_types=ftypes,
+                extra_attrs=extra_attrs_d)
+        self._source_ds = None
