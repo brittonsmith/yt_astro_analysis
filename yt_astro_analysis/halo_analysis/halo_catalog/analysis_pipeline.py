@@ -444,7 +444,7 @@ class AnalysisPipeline(ParallelAnalysisInterface):
 
         if njobs == 'auto':
             # use task queue if odd number of cores more than 2
-            my_dynamic = my_size > 2 and my_size % 2
+            my_dynamic = my_size > 2 and bool(my_size % 2)
             my_njobs = -1
         else:
             my_dynamic = dynamic
@@ -495,7 +495,7 @@ class AnalysisPipeline(ParallelAnalysisInterface):
         if target_filter:
             for quantity in new_target.quantities.values():
                 if hasattr(quantity, "units"):
-                    quantity.convert_to_base()
+                    quantity.convert_to_cgs()
             self.catalog.append(new_target.quantities)
 
         if save_objects and target_filter:

@@ -634,9 +634,8 @@ def virial_quantities(halo, fields,
         v_prof = profile_data[field][dfilter].to_ndarray()
         slope = np.log(v_prof[index + 1] / v_prof[index]) / \
           np.log(vod[index + 1] / vod[index])
-        value = dds.quan(np.exp(slope * np.log(critical_overdensity / 
-                                               vod[index])) * v_prof[index],
-                         profile_data[field].units).in_cgs()
+        value = np.exp(slope * np.log(critical_overdensity / vod[index])) * v_prof[index]
+        value = dds.quan(value, profile_data[field].units)
         vquantities["%s_%d" % (v_fields[field], critical_overdensity)] = value
 
     halo.quantities.update(vquantities)
