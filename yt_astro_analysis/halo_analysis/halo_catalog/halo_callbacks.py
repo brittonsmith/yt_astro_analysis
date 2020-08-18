@@ -17,7 +17,7 @@ from yt.utilities.on_demand_imports import _h5py as h5py
 import numpy as np
 import os
 
-from yt.convenience import \
+from yt.loaders import \
     load as yt_load
 from yt.data_objects.profiles import \
     create_profile
