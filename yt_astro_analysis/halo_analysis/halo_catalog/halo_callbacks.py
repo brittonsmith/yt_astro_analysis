@@ -25,7 +25,7 @@ from yt.frontends.ytdata.utilities import \
     _hdf5_yt_array, \
     _yt_array_hdf5, \
     save_as_dataset
-from yt.funcs import \
+from yt._maintenance.deprecation import \
     issue_deprecation_warning
 from yt.units.yt_array import \
     YTArray
