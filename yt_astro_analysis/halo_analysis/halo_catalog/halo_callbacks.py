@@ -8,6 +8,9 @@ HaloCatalog callbacks
 from yt.utilities.on_demand_imports import _h5py as h5py
 import numpy as np
 import os
+import warnings
+
+from numpy import VisibleDeprecationWarning
 
 from yt.loaders import \
     load as yt_load
@@ -17,8 +20,6 @@ from yt.frontends.ytdata.utilities import \
     _hdf5_yt_array, \
     _yt_array_hdf5, \
     save_as_dataset
-from yt.funcs import \
-    issue_deprecation_warning
 from yt.units.yt_array import \
     YTArray
 from yt.utilities.exceptions import \
@@ -323,10 +324,11 @@ def save_profiles(halo, storage="profiles", filename=None,
     
     """
 
-    issue_deprecation_warning("""
+    warnings.warning("""
 This callback has been deprecated in favor of the save_object_as_datset
 callback. Please, use as:
->>> hc.add_callback("save_object_as_dataset", "profiles")""")
+>>> hc.add_callback("save_object_as_dataset", "profiles")""",
+                     VisibleDeprecationWarning, stacklevel=2)
 
     if not hasattr(halo, storage):
         return
@@ -391,10 +393,11 @@ def load_profiles(halo, storage="profiles", fields=None,
     
     """
 
-    issue_deprecation_warning("""
+    warnings.warning("""
 This callback has been deprecated in favor of the load_object_as_datset
 callback. Please, use as:
->>> hc.add_callback("load_object_as_dataset", "profiles")""")
+>>> hc.add_callback("load_object_as_dataset", "profiles")""",
+                     VisibleDeprecationWarning, stacklevel=2)
 
     if filename is None:
         filename = storage
