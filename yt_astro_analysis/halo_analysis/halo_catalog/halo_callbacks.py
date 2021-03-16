@@ -1,17 +1,9 @@
 """
-Halo callback object
+HaloCatalog callbacks
 
 
 
 """
-
-#-----------------------------------------------------------------------------
-# Copyright (c) 2013, yt Development Team.
-#
-# Distributed under the terms of the Modified BSD License.
-#
-# The full license is in the file COPYING.txt, distributed with this software.
-#-----------------------------------------------------------------------------
 
 from yt.utilities.on_demand_imports import _h5py as h5py
 import numpy as np
@@ -31,37 +23,16 @@ from yt.units.yt_array import \
     YTArray
 from yt.utilities.exceptions import \
     YTSphereTooSmall
-from yt.funcs import \
-    ensure_list
 from yt.utilities.logger import ytLogger as mylog
-from yt.utilities.operator_registry import \
-    OperatorRegistry
 from yt.utilities.parallel_tools.parallel_analysis_interface import \
     parallel_root_only
 from yt.visualization.profile_plotter import \
     PhasePlot
 
-callback_registry = OperatorRegistry()
-    
-def add_callback(name, function):
-    callback_registry[name] =  HaloCallback(function)
+from more_itertools import always_iterable
 
-class HaloCallback(object):
-    r"""
-    A HaloCallback is a function that minimally takes in a Halo object 
-    and performs some analysis on it.  This function may attach attributes 
-    to the Halo object, write out data, etc, but does not return anything.
-    """
-    def __init__(self, function, args=None, kwargs=None):
-        self.function = function
-        self.args = args
-        if self.args is None: self.args = []
-        self.kwargs = kwargs
-        if self.kwargs is None: self.kwargs = {}
-
-    def __call__(self, halo):
-        self.function(halo, *self.args, **self.kwargs)
-        return True
+from yt_astro_analysis.halo_analysis.halo_catalog.analysis_operators import \
+    add_callback
 
 def _debug(halo):
     import pdb ; pdb.set_trace()
@@ -286,7 +257,7 @@ def profile(halo, bin_fields, profile_fields, n_bins=None, extrema=None, logs=No
         output_dir = storage
     output_dir = os.path.join(halo.halo_catalog.output_dir, output_dir)
     
-    bin_fields = ensure_list(bin_fields)
+    bin_fields = list(always_iterable(bin_fields))
     my_profile = create_profile(halo.data_object, bin_fields, profile_fields, n_bins=n_bins,
                                 extrema=extrema, logs=logs, units=units, weight_field=weight_field,
                                 accumulation=accumulation, fractional=fractional)
@@ -574,9 +545,8 @@ def virial_quantities(halo, fields,
     mylog.info("Calculating virial quantities for halo %d." %
                halo.quantities["particle_identifier"])
 
-    fields = ensure_list(fields)
     fields = [halo.data_object._determine_fields(field)[0]
-              for field in fields]
+              for field in always_iterable(fields)]
     
     dds = halo.halo_catalog.data_ds
     profile_data = getattr(halo, profile_storage)

@@ -51,11 +51,11 @@ commands:
             export MAX_BUILD_CORES=2
             # install yt from source
             if [ ! -f $YT_DIR/README.md ]; then
-                git clone --branch=master https://github.com/yt-project/yt $YT_DIR
+                git clone --branch=main https://github.com/yt-project/yt $YT_DIR
             fi
             pushd $YT_DIR
-            git pull origin master
-            git checkout master
+            git pull origin main
+            git checkout main
             pip install -e .
             popd
             # install rockstar
@@ -69,11 +69,9 @@ commands:
             # install yt_astro_analysis with extra dev dependencies
             pip install -e .[dev]
             # configure yt
-            mkdir -p $HOME/.config/yt
-            echo "[yt]" > $HOME/.config/yt/ytrc
-            echo "suppressStreamLogging = True" >> $HOME/.config/yt/ytrc
-            echo "test_data_dir = $YT_DATA" >> $HOME/.config/yt/ytrc
-            echo "loglevel = 30" >> $HOME/.config/yt/ytrc
+            yt config set --global yt suppress_stream_logging True
+            yt config set --global yt test_data_dir $YT_DATA
+            yt config set --global yt log_level 30
 
   download-test-data:
     description: "Download test data."
@@ -104,16 +102,18 @@ commands:
       - run:
           name: "Build yt_astro_analysis and run tests."
           command: |
+            # tag the tip so we can get back there
+            git tag tip
             source $BASH_ENV
             source $HOME/venv/bin/activate
             # generate answers if not cached
-            if [ ! -f $TEST_DIR/$TEST_NAME/$TEST_NAME ]; then
+            if [ ! -d $TEST_DIR/$TEST_NAME ]; then
               git checkout $GOLD_STANDARD
               pip install -e .
               nosetests $TEST_FLAGS --answer-store
             fi
             # return to tip and run comparison tests
-            git checkout -
+            git checkout tip
             pip install -e .
             coverage run `which nosetests` $TEST_FLAGS
             # code coverage report
@@ -156,13 +156,13 @@ jobs:
 
       - restore_cache:
           name: "Restore dependencies cache."
-          key: python-<< parameters.tag >>-dependencies-v7
+          key: python-<< parameters.tag >>-dependencies-v8
 
       - install-with-yt-dev
 
       - save_cache:
           name: "Save dependencies cache"
-          key: python-<< parameters.tag >>-dependencies-v7
+          key: python-<< parameters.tag >>-dependencies-v8
           paths:
             - ~/.cache/pip
             - ~/venv
@@ -185,13 +185,13 @@ jobs:
 
       - restore_cache:
           name: "Restore test answers."
-          key: python-<< parameters.tag >>-test-answers-v7
+          key: python-<< parameters.tag >>-test-answers-v8
 
       - build-and-test
 
       - save_cache:
           name: "Save test answers cache."
-          key: python-<< parameters.tag >>-test-answers-v7
+          key: python-<< parameters.tag >>-test-answers-v8
           paths:
             - ~/test_results
 
@@ -212,13 +212,13 @@ jobs:
 
       - restore_cache:
           name: "Restore dependencies cache."
-          key: python-<< parameters.tag >>-dependencies-v7
+          key: python-<< parameters.tag >>-dependencies-v8
 
       - install-with-yt-dev
 
       - save_cache:
           name: "Save dependencies cache"
-          key: python-<< parameters.tag >>-dependencies-v7
+          key: python-<< parameters.tag >>-dependencies-v8
           paths:
             - ~/.cache/pip
             - ~/venv

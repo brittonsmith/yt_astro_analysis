@@ -15,9 +15,9 @@ API for halo_finding
 
 import warnings
 
-from yt.funcs import VisibleDeprecationWarning
+from numpy import VisibleDeprecationWarning
 
-warnings.warn(
+warnings.warning(
     "Running the HoP and FoF halo finders directly is deprecated. " +
     "Please run using the HaloCatalog. See " +
     "https://yt-astro-analysis.readthedocs.io for more information.",
