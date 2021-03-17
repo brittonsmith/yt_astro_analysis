@@ -324,7 +324,7 @@ def save_profiles(halo, storage="profiles", filename=None,
     
     """
 
-    warnings.warning("""
+    warnings.warn("""
 This callback has been deprecated in favor of the save_object_as_datset
 callback. Please, use as:
 >>> hc.add_callback("save_object_as_dataset", "profiles")""",
@@ -393,7 +393,7 @@ def load_profiles(halo, storage="profiles", fields=None,
     
     """
 
-    warnings.warning("""
+    warnings.warn("""
 This callback has been deprecated in favor of the load_object_as_datset
 callback. Please, use as:
 >>> hc.add_callback("load_object_as_dataset", "profiles")""",
