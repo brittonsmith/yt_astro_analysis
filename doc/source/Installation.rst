@@ -10,15 +10,20 @@ that, ``yt_astro_analysis`` can be installed with pip:
 
 .. code-block:: bash
 
-   $ pip install yt_astro_analysis
+   $ pip install yt-astro-analysis
 
 If you use ``conda`` to manage packages, you can install ``yt_astro_analysis``
 from conda-forge:
 
 .. code-block:: bash
 
-   $ conda install -c conda-forge yt_astro_analysis
-   
+   $ conda install -c conda-forge yt-astro-analysis
+
+Note, the package name is spelled with hyphens (``yt-astro-analysis``)
+when installing from pip or conda. With pip, the package name can be
+spelled with either hyphens or underscores, but with conda it must
+always be hyphens.
+
 Installing from source
 ----------------------
 
@@ -56,8 +61,8 @@ John Wise.
 
 .. code-block:: python
 
-   >>> ds = yt.load(...)
-   >>> ds.parameters['format_revision'] = 2
+   ds = yt.load(...)
+   ds.parameters["format_revision"] = 2
 
 To install ``rockstar-galaxies``, do the following:
 

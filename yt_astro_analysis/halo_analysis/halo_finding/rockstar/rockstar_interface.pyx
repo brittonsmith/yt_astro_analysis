@@ -13,15 +13,18 @@ Particle operations for Lagrangian Volume
 # The full license is in the file COPYING.txt, distributed with this software.
 #-----------------------------------------------------------------------------
 
+import os
+import sys
+
 import numpy as np
-import os, sys
-cimport numpy as np
+
 cimport cython
+cimport numpy as np
 from libc.stdlib cimport malloc
-from yt.utilities.parallel_tools.parallel_analysis_interface import \
-    parallel_objects
 
 from yt.config import ytcfg
+from yt.utilities.parallel_tools.parallel_analysis_interface import parallel_objects
+
 
 cdef import from "particle.h":
     struct particle:
@@ -207,6 +210,9 @@ cdef void rh_read_particles(char *filename, particle **p, np.int64_t *num_p):
     if rh.particle_type not in ds.particle_types and rh.particle_type != 'all':
         ds.add_particle_filter(rh.particle_type)
 
+    use_ptype = len(rh.star_types) > 0 and \
+        (rh.particle_type, "particle_type") in ds.derived_field_list
+
     # First we need to find out how many this reader is going to read in
     # if the number of readers > 1.
     dd = ds.all_data()
@@ -229,11 +235,12 @@ cdef void rh_read_particles(char *filename, particle **p, np.int64_t *num_p):
     # Now we want to grab data from only a subset of the grids for each reader.
     for chunk in parallel_objects(dd.chunks([], "io")):
         arri = np.asarray(chunk[rh.particle_type, "particle_index"], dtype="int64")
-        marr = chunk[rh.particle_type, "particle_mass"].to("Msun/h").astype("float64")
+        marr = chunk[rh.particle_type, rh.mass_field].to("Msun/h").astype("float64")
         # earr = chunk[rh.particle_type, "particle_"].to("").astype("float64")
         # sarr = chunk[rh.particle_type, "particle_"].to("").astype("float64")
         # mtarr= chunk[rh.particle_type, "particle_"].to("").astype("float64")
-        tarr = np.asarray(chunk[rh.particle_type, "particle_type"], dtype="int32")
+        if use_ptype:
+            tarr = np.asarray(chunk[rh.particle_type, "particle_type"], dtype="int32")
         npart = arri.size
         for i in range(npart):
             p[0][i+pi].id = <np.int64_t> arri[i]
@@ -241,7 +248,7 @@ cdef void rh_read_particles(char *filename, particle **p, np.int64_t *num_p):
             # p[0][i+pi].energy = <np.float64_t> earr[i]
             # p[0][i+pi].softening = <np.float64_t> sarr[i]
             # p[0][i+pi].metallicity = <np.float64_t> mtarr[i]
-            if tarr[i] in rh.star_types:
+            if use_ptype and tarr[i] in rh.star_types:
                 type = 2
             else:
                 type = 0
@@ -274,8 +281,9 @@ cdef class RockstarInterface:
     cdef int size
     cdef public int block_ratio
     cdef public object particle_type
+    cdef public object mass_field
     cdef public object star_types
-    cdef public int total_particles
+    cdef public np.int64_t total_particles
     cdef public object callbacks
 
     def __cinit__(self, ts):
@@ -283,8 +291,8 @@ cdef class RockstarInterface:
         self.tsl = iter(ts)  # timeseries generator used by read
 
     def setup_rockstar(self, char *server_address, char *server_port,
-                       int num_snaps, int total_particles,
-                       particle_type, star_types,
+                       int num_snaps, np.int64_t total_particles,
+                       particle_type, mass_field, star_types,
                        np.float64_t particle_mass,
                        int parallel = False, int num_readers = 1,
                        int num_writers = 1,
@@ -332,6 +340,7 @@ cdef class RockstarInterface:
         TOTAL_PARTICLES = total_particles
         self.block_ratio = block_ratio
         self.particle_type = particle_type
+        self.mass_field = mass_field
         self.star_types = star_types
 
         tds = self.ts[0]
@@ -371,4 +380,3 @@ cdef class RockstarInterface:
     def start_writer(self):
         cdef np.int64_t in_type = np.int64(WRITER_TYPE)
         client(in_type)
-

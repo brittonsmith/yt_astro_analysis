@@ -10,7 +10,7 @@ Feel free to use the text below in your publications:
 ::
 
   Analysis was performed using the yt_astro_analysis extension
-  (Smith et al. 2018) of the yt analysis toolkit (Turk et al. 2011).
+  (Smith et al. 2022) of the yt analysis toolkit (Turk et al. 2011).
 
   Analysis was performed using the yt_astro_analysis extension
   \citep{yt.astro.analysis} of the yt analysis toolkit \citep{yt}.
@@ -30,12 +30,13 @@ BbTeX entries are provided below:
                     Anthony Scopatz and
                     Miguel de Val-Borro and
                     Ben Keller and
-                    Mark Richardson},
-    title        = {yt-astro-analysis},
-    month        = oct,
-    year         = 2018,
-    doi          = {10.5281/zenodo.1458961},
-    url          = {https://doi.org/10.5281/zenodo.1458961}
+                    Mark Richardson and
+                    Clément Robert},
+    title        = {yt_astro_analysis version 1.1.1},
+    month        = jan,
+    year         = 2022,
+    doi          = {10.5281/zenodo.5911048},
+    url          = {https://doi.org/10.5281/zenodo.5911048}
   }
 
   @ARTICLE{yt,
