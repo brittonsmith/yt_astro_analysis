@@ -148,7 +148,7 @@ def _parse_halo_list(hc, halo_list):
         halo_properties["particle_velocity_z"][i] = bv[2].to(ud["particle_velocity_z"])
 
         if save_particles:
-            n_particles[i] = halo.indices.size
+            n_particles[i] = halo.get_size()
 
     if save_particles:
         member_ids = np.empty(n_particles.sum(), dtype=np.int64)

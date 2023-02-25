@@ -64,10 +64,7 @@ class Halo:
         self.data = halo_list._data_source
         self.ds = self.data.ds
         self.gridsize = self.ds.domain_right_edge - self.ds.domain_left_edge
-        if indices is not None:
-            self.indices = halo_list._base_indices[indices]
-        else:
-            self.indices = None
+        self.indices = indices
         # We assume that if indices = None, the instantiator has OTHER plans
         # for us -- i.e., setting it somehow else
         self.size = size
@@ -282,7 +279,7 @@ class Halo:
         return r.max()
 
     def __getitem__(self, key):
-        return self.data[(self.ptype, key)][self.indices]
+        return self.halo_list._get_tagsorted_field(key)[self.indices]
 
     def get_sphere(self, center_of_mass=True):
         r"""Returns a sphere source.
@@ -321,7 +318,7 @@ class Halo:
     def get_size(self):
         if self.size is not None:
             return self.size
-        return self.indices.size
+        return self.indices.stop - self.indices.start
 
     def virial_mass(self, virial_overdensity=200.0, bins=300):
         r"""Return the virial mass of the halo in Msun,
@@ -575,6 +572,8 @@ class FOFHalo(Halo):
 
 class HaloList:
     _fields = ["particle_position_%s" % ax for ax in "xyz"]
+    _tagsort = None
+    tags = None
 
     def __init__(self, data_source, redshift=-1, ptype="all"):
         """
@@ -586,6 +585,7 @@ class HaloList:
         self.ptype = ptype
         self._groups = []
         self._max_dens = {}
+        self._tagsorted_particle_fields = {}
         self.__obtain_particles()
         self._run_finder()
         mylog.info("Parsing outputs")
@@ -594,45 +594,68 @@ class HaloList:
         self.redshift = redshift
 
     def __obtain_particles(self):
-        ii = slice(None)
         self.particle_fields = {}
         for field in self._fields:
             tot_part = self._data_source[(self.ptype, field)].size
             if field == "particle_index":
-                self.particle_fields[field] = self._data_source[(self.ptype, field)][
-                    ii
-                ].astype("int64")
+                dtype = "int64"
             else:
-                self.particle_fields[field] = self._data_source[(self.ptype, field)][
-                    ii
-                ].astype("float64")
+                dtype = "float64"
+            self.particle_fields[field] = \
+              self._data_source[(self.ptype, field)].astype(dtype)
             del self._data_source[(self.ptype, field)]
-        self._base_indices = np.arange(tot_part)[ii]
         gc.collect()
 
+    @property
+    def tagsort(self):
+        if self._tagsort is not None:
+            return self._tagsort
+        if self.tags is None:
+            return None
+        self._tagsort = np.argsort(self.tags)
+        return self._tagsort
+
+    def _get_tagsorted_field(self, field):
+        """
+        Return particle fields sorted by the groups they belong to.
+        """
+
+        if field in self._tagsorted_particle_fields:
+            return self._tagsorted_particle_fields[field]
+
+        if field in self.particle_fields:
+            fdata = self.particle_fields.pop(field)
+        else:
+            fdata = self._data_source[(self.ptype, field)]
+
+        self._tagsorted_particle_fields[field] = fdata[self.tagsort]
+        return self._tagsorted_particle_fields[field]
+
     def _parse_output(self):
-        unique_ids = np.unique(self.tags)
-        counts = np.bincount(self.tags + 1)
-        sort_indices = np.argsort(self.tags)
-        grab_indices = np.indices(self.tags.shape).ravel()[sort_indices]
-        dens = self.densities[sort_indices]
+        unique_ids, counts = np.unique(self.tags, return_counts=True)
+
+        dens = self.densities[self.tagsort]
         cp = 0
-        for i in unique_ids:
-            cp_c = cp + counts[i + 1]
-            if i == -1:
-                cp += counts[i + 1]
+        for i in range(unique_ids.size):
+            my_id = unique_ids[i]
+            cp_c = cp + counts[i]
+            if my_id == -1:
+                cp += counts[i]
                 continue
-            group_indices = grab_indices[cp:cp_c]
+
+            group_slice = slice(cp, cp_c)
             self._groups.append(
-                self._halo_class(self, i, group_indices, ptype=self.ptype)
+                self._halo_class(self, my_id, group_slice, ptype=self.ptype)
             )
-            md_i = np.argmax(dens[cp:cp_c])
+
+            md_i = np.argmax(dens[group_slice])
             px, py, pz = (
-                self.particle_fields["particle_position_%s" % ax][group_indices]
+                self._get_tagsorted_field("particle_position_%s" % ax)[group_slice]
                 for ax in "xyz"
             )
-            self._max_dens[i] = (dens[cp:cp_c][md_i], px[md_i], py[md_i], pz[md_i])
-            cp += counts[i + 1]
+            self._max_dens[my_id] = (dens[cp:cp_c][md_i], px[md_i], py[md_i], pz[md_i])
+            cp += counts[i]
+        self.particle_fields.clear()
 
     def __len__(self):
         return len(self._groups)
@@ -667,8 +690,6 @@ class HOPHaloList(HaloList):
             self.particle_fields["particle_mass"].in_units("Msun"),
             self.threshold,
         )
-        self.particle_fields["densities"] = self.densities
-        self.particle_fields["tags"] = self.tags
 
 
 class FOFHaloList(HaloList):
@@ -688,8 +709,6 @@ class FOFHaloList(HaloList):
             self.link,
         )
         self.densities = np.ones(self.tags.size, dtype="float64") * -1
-        self.particle_fields["densities"] = self.densities
-        self.particle_fields["tags"] = self.tags
 
 
 class GenericHaloFinder(HaloList, ParallelAnalysisInterface):
